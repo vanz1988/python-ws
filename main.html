@@ -471,6 +471,77 @@
                 timeElement.textContent = `Loaded: ${loadTime}`;
             }
 
+            // ================= 新增：剪贴板链接提取功能 =================
+            // 提取文本中的第一个 http:// 或 https:// 链接
+            function extractFirstUrl(text) {
+                const urlRegex = /https?:\/\/[^\s$]+/g;
+                const matches = text.match(urlRegex);
+                return matches && matches.length > 0 ? matches[0] : null;
+            }
+
+            // 复制文本到剪贴板（带 fallback）
+            async function copyToClipboard(text) {
+                try {
+                    await navigator.clipboard.writeText(text);
+                    return true;
+                } catch (err) {
+                    console.error('Clipboard API failed:', err);
+                    // 降级方案
+                    const textarea = document.createElement('textarea');
+                    textarea.value = text;
+                    document.body.appendChild(textarea);
+                    textarea.select();
+                    const success = document.execCommand('copy');
+                    document.body.removeChild(textarea);
+                    return success;
+                }
+            }
+
+            // 处理提取链接的主逻辑
+            async function handleExtractLink() {
+                const statusDiv = document.getElementById('extractStatus');
+                statusDiv.textContent = '⏳ 正在读取剪贴板...';
+                statusDiv.className = 'status-msg';
+
+                try {
+                    // 读取剪贴板文本
+                    const clipboardText = await navigator.clipboard.readText();
+                    if (!clipboardText || clipboardText.trim() === '') {
+                        statusDiv.textContent = '❌ 剪贴板为空，请先复制包含链接的文本。';
+                        statusDiv.className = 'status-msg error';
+                        return;
+                    }
+
+                    // 提取链接
+                    const extractedUrl = extractFirstUrl(clipboardText);
+                    if (!extractedUrl) {
+                        statusDiv.textContent = '⚠️ 未在剪贴板中找到 http:// 或 https:// 开头的链接。';
+                        statusDiv.className = 'status-msg error';
+                        return;
+                    }
+
+                    // 将提取的链接复制到剪贴板
+                    const copySuccess = await copyToClipboard(extractedUrl);
+                    if (copySuccess) {
+                        statusDiv.innerHTML = `✅ 成功提取并复制链接：<br><strong>${extractedUrl}</strong><br>现在可以粘贴使用。`;
+                        statusDiv.className = 'status-msg success';
+                    } else {
+                        statusDiv.innerHTML = `⚠️ 提取到链接，但复制失败，请手动复制：<br>${extractedUrl}`;
+                        statusDiv.className = 'status-msg error';
+                    }
+                } catch (err) {
+                    console.error(err);
+                    let errorMsg = '读取剪贴板失败，请确保已授予权限。';
+                    if (err.name === 'NotAllowedError') {
+                        errorMsg = '🔒 无法访问剪贴板：请点击页面任意区域后再尝试，或检查浏览器权限设置。';
+                    } else if (err.message) {
+                        errorMsg = `错误：${err.message}`;
+                    }
+                    statusDiv.textContent = `❌ ${errorMsg}`;
+                    statusDiv.className = 'status-msg error';
+                }
+            }
+
             // 页面加载完成后执行
             window.onload = function() {
                 var result = Z();
@@ -483,6 +554,12 @@
                 displayPageLoadTime();
                 // 新增：获取并显示IP
                 displayIPs();
+
+                // 绑定提取链接按钮事件
+                const extractBtn = document.getElementById("extractLinkBtn");
+                if (extractBtn) {
+                    extractBtn.addEventListener("click", handleExtractLink);
+                }
             }
             ;
         </script>
@@ -495,6 +572,12 @@
             <div class="hash-value" id="webrtcIP">Loading WebRTC IP...</div>
             <div class="hash-value" id="publicIP">Loading Public IP...</div>
             <div class="hash-value" id="currentTime">Loading time...</div>
+            <!-- 新增的链接提取模块 -->
+            <hr style="margin: 20px 0;">
+            <div style="margin-top: 15px;">
+                <button id="extractLinkBtn" class="extract-btn">📋 从剪贴板提取链接</button>
+                <div id="extractStatus" class="status-msg" style="margin-top: 12px;">点击按钮，将从剪贴板中提取 http/https 链接并自动复制</div>
+            </div>
         </div>
     </body>
 </html>
